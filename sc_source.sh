@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # Configuration
-INDEX_FILE="/tmp/sc_${USER}_viewer_index.db"
-INDEX_TAB_FILE="/tmp/sc_${USER}_viewer_index_tab.db"
-TEMP_FIND_LIST="/tmp/sc_${USER}_viewer_files.txt"
-TEMP_RAW_DB="/tmp/sc_${USER}_viewer_raw.db"
-TEMP_RAW_TAB_DB="/tmp/sc_${USER}_viewer_raw_tab.db"
+INDEX_FILE="${SEARCH_DIR}/.scviewer_index.db"
+INDEX_TAB_FILE="${SEARCH_DIR}/.scviewer_index_tab.db"
+TEMP_FIND_LIST="${SEARCH_DIR}/.scviewer_files.txt"
+TEMP_RAW_DB="${SEARCH_DIR}/.scviewer_raw.db"
+TEMP_RAW_TAB_DB="${SEARCH_DIR}/.scviewer_raw_tab.db"
 
 # ANSI colors
 RED='\033[0;31m'
