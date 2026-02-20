@@ -1,6 +1,11 @@
 #!/bin/bash
 
 # Configuration
+if [[ -d "$1" ]]; then
+    SEARCH_DIR="$1"
+else
+    SEARCH_DIR="."
+fi
 INDEX_FILE="${SEARCH_DIR}/.scviewer_index.db"
 INDEX_TAB_FILE="${SEARCH_DIR}/.scviewer_index_tab.db"
 TEMP_FIND_LIST="${SEARCH_DIR}/.scviewer_files.txt"
@@ -26,9 +31,11 @@ usage() {
     echo "  2. Run: source ./sc_viewer.sh ."
     echo
     echo "  Commands:"
-    echo "    scview <entry>          : Print entry to stdout (Default)"
-    echo "    scview less <entry>     : Pipe entry to 'less'"
-    echo "    scview cat <entry>      : Print entry to stdout (Explicit)"
+    echo "    scview <entry>                    : Print entry to stdout (Default)"
+    echo "    scview -d <dir> <entry>           : Search in specific supportconfig directory"
+    echo "    scview less <entry>               : Pipe entry to 'less'"
+    echo "    scview cat <entry>                : Print entry to stdout (Explicit)"
+    echo "    scview diff <dir1> <dir2> <entry> : Diff entry between two supportconfigs"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
@@ -36,16 +43,20 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     exit 1
 fi
 
+if [[ ! -f "${SEARCH_DIR}/supportconfig.txt" ]]; then
+    echo -e "${RED}Error${NC}: supportconfig.txt file not found in ${SEARCH_DIR}"
+    return 1
+fi
+
 generate_index() {
-    local search_dir="${1:-.}"
-    echo -e "${GREEN}Scanning for supportconfig files in: ${search_dir}${NC}"
+    echo -e "${GREEN}Scanning for supportconfig files in: ${SEARCH_DIR}${NC}"
 
     : > "$TEMP_RAW_DB"
-    find "$search_dir" -type f -name "*.txt" > "$TEMP_FIND_LIST"
+    find "$SEARCH_DIR" -type f -name "*.txt" > "$TEMP_FIND_LIST"
 
     local file_count=$(wc -l < "$TEMP_FIND_LIST")
     if [[ "$file_count" -eq 0 ]]; then
-        echo -e "${RED}No .txt files found in $search_dir${NC}"
+        echo -e "${RED}No .txt files found in $SEARCH_DIR${NC}"
         return 1
     fi
 
@@ -134,40 +145,104 @@ generate_index() {
 
 scview() {
     local use_pager=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -d)
+          SEARCH_DIR="$2"
+          shift 2
+          ;;
+        -d*)
+          SEARCH_DIR="${1#-d}"
+          shift
+          ;;
+        less)
+          use_pager=1
+          shift
+          ;;
+        cat)
+          use_pager=0
+          shift
+          ;;
+        --)
+          shift
+          break
+          ;;
+        *)
+          break
+          ;;
+      esac
+    done
 
-    if [[ "$1" == "less" && -n "$2" ]]; then
-        use_pager=1
-        shift
-    elif [[ "$1" == "cat" && -n "$2" ]]; then
-        use_pager=0
-        shift
+    if [[ "$1" == "diff" && -n "$2" && -n "$3" ]]; then
+        SC1="$2"
+        SC2="$3"
+        SC1_INDEX_FILE="$2/.scviewer_index.db"
+        SC2_INDEX_FILE="$3/.scviewer_index.db"
+
+        if [[ ! -f "$SC1_INDEX_FILE" ]]; then
+            echo -e "${RED}Error: Index file not found in $2. Run 'sc_viewer.sh $2' first.${NC}"
+            return 1
+        fi
+        if [[ ! -f "$SC2_INDEX_FILE" ]]; then
+            echo -e "${RED}Error: Index file not found in $3. Run 'sc_viewer.sh $3' first.${NC}"
+            return 1
+        fi
+
+
+        local selection="${@: -1}"
+        # Exact match lookup in the DB
+        local entry1 entry2
+        entry=$(awk -F';' -v search="$selection" '$1 == search {print $0; exit}' "$SC1_INDEX_FILE")
+        entry1=$(scview -d "$SC1" "$selection")
+        entry2=$(scview -d "$SC2" "$selection")
+
+        if [[ -z "$entry1" && -z "$entry2" ]]; then
+            echo -e "${RED}Error: Command '${selection}' not found in either index.${NC}"
+            return 1
+        fi
+        
+        # Safe parsing
+        local cmd_name file_path start_line
+        IFS=';' read -r cmd_name file_path start_line <<< "$entry"
+
+        print_content() {
+            echo -e "${CYAN}Diffing: ${cmd_name}${NC} [File: ${file_path}]"
+            echo -e "--- ${SC1}/${file_path} ---"
+            echo -e "+++ ${SC2}/${file_path} ---"
+            echo "--------------------------------------------------------"
+            git diff --no-index --color=always <(echo "$entry1") <(echo "$entry2")
+            }
+
+    else
+
+        local selection="$*"
+
+        if [[ -z "$selection" ]]; then
+            echo "Usage: scview [less|cat] <command_or_file>"
+            return 1
+        fi
+
+        # Exact match lookup in the DB
+        local entry
+        entry=$(awk -F';' -v search="$selection" '$1 == search {print $0; exit}' "$SEARCH_DIR"/"$INDEX_FILE")
+
+        if [[ -z "$entry" ]]; then
+            echo -e "${RED}Error: Command '${selection}' not found in index "$SEARCH_DIR"/"$INDEX_FILE"${NC}"
+            return 1
+        fi
+
+        # Safe parsing
+        local cmd_name file_path start_line
+        IFS=';' read -r cmd_name file_path start_line <<< "$entry"
+
+        print_content() {
+            echo -e "${CYAN}Viewing: ${cmd_name}${NC} [File: ${SEARCH_DIR}/${file_path}]"
+            echo "--------------------------------------------------------"
+            sed -n "${start_line},\$p" "$SEARCH_DIR"/"$file_path" | awk 'NR > 1 && /^#==\[/ { exit } { print }'
+            }
+
+
     fi
-
-    local selection="$*"
-
-    if [[ -z "$selection" ]]; then
-        echo "Usage: scview [less|cat] <command_or_file>"
-        return 1
-    fi
-
-    # Exact match lookup in the DB
-    local entry
-    entry=$(awk -F';' -v search="$selection" '$1 == search {print $0; exit}' "$INDEX_FILE")
-
-    if [[ -z "$entry" ]]; then
-        echo -e "${RED}Error: Command '${selection}' not found in index.${NC}"
-        return 1
-    fi
-
-    # Safe parsing
-    local cmd_name file_path start_line
-    IFS=';' read -r cmd_name file_path start_line <<< "$entry"
-
-    print_content() {
-        echo -e "${CYAN}Viewing: ${cmd_name}${NC} [File: ${file_path}]"
-        echo "--------------------------------------------------------"
-        sed -n "${start_line},\$p" "$file_path" | awk 'NR > 1 && /^#==\[/ { exit } { print }'
-    }
 
     if [[ "$use_pager" -eq 1 ]]; then
         print_content | less
