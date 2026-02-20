@@ -7,6 +7,11 @@ TEMP_FIND_LIST="${SEARCH_DIR}/.scviewer_files.txt"
 TEMP_RAW_DB="${SEARCH_DIR}/.scviewer_raw.db"
 TEMP_RAW_TAB_DB="${SEARCH_DIR}/.scviewer_raw_tab.db"
 
+#TODO
+# ownership/permissions of files
+# fix search dir from being included in index
+# add check if called by source. "Scanning for supportconfig files in: is"
+
 # ANSI colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
