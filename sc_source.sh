@@ -50,10 +50,11 @@ fi
 
 generate_index() {
     echo -e "${GREEN}Scanning for supportconfig files in: ${SEARCH_DIR}${NC}"
-
+    # Truncate $TEMP_RAW_DB to prevent issues if script is run multiple times
     : > "$TEMP_RAW_DB"
     find "$SEARCH_DIR" -type f -name "*.txt" > "$TEMP_FIND_LIST"
-
+    
+    # Ensure there were .txt files found
     local file_count=$(wc -l < "$TEMP_FIND_LIST")
     if [[ "$file_count" -eq 0 ]]; then
         echo -e "${RED}No .txt files found in $SEARCH_DIR${NC}"
@@ -173,6 +174,8 @@ scview() {
       esac
     done
 
+
+# Diff section. First check for diff and "directories" parameters. 
     if [[ "$1" == "diff" && -n "$2" && -n "$3" ]]; then
         SC1="$2"
         SC2="$3"
@@ -188,7 +191,7 @@ scview() {
             return 1
         fi
 
-
+        #Select the last parameter when running scview for the command or file to run.
         local selection="${@: -1}"
         # Exact match lookup in the DB
         local entry1 entry2
@@ -253,15 +256,20 @@ scview() {
 
 # --- AUTOCOMPLETE ---
 _scview_completions() {
-    # Disable default fallbacks
+    # Disable default Bash completion (like file/dir lookups) if our script 
+    # doesn't find a match. This keeps the UI clean.
     compopt +o default 2>/dev/null
 
+    # The word currently being typed by the user
     cur="${COMP_WORDS[COMP_CWORD]}"
 
     if [[ ! -f "$INDEX_TAB_FILE" ]]; then
         return
     fi
 
+    # Determine where the actual search term starts. If the user typed 'scview cat ...' or 'scview less ...', the search term 
+    # starts at index 2. Otherwise, it starts at index 1.
+    # TODO - consider moving this functionality to the #CASE like diff
     local start_index=1
     if [[ "${COMP_WORDS[1]}" == "cat" || "${COMP_WORDS[1]}" == "less" ]]; then
         if [[ $COMP_CWORD -ge 2 ]]; then
@@ -269,21 +277,24 @@ _scview_completions() {
         fi
     fi
 
+    # Reconstruct the string typed so far before the current cursor position.
     local prefix=""
     for (( i=start_index; i<COMP_CWORD; i++ )); do
         prefix+="${COMP_WORDS[i]} "
     done
-
+    # The full string we are looking for in the index
     local full_search="${prefix}${cur}"
 
-    # Search DB
+    # Search DB and extract only the command name
     local matches
     matches=$(grep "^${full_search}" "$INDEX_TAB_FILE" | cut -d';' -f1)
 
     local IFS=$'\n'
     COMPREPLY=()
 
+    # Populate the completion reply list.
     for cmd in $matches; do
+        # Remove "prefix" for bash completion
         local prefix_len=${#prefix}
         local suggestion="${cmd:$prefix_len}"
 
